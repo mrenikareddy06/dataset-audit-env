@@ -32,8 +32,7 @@ class AsyncEnvWrapper:
     async def step(self, action: dict):
         res = await self.http.post(f"{self.base_url}/step", json=action)
         res.raise_for_status()
-        payload = res.json()
-        return payload["observation"], payload["reward"]
+        return res.json()
         
     async def close(self):
         await self.http.aclose()
@@ -62,78 +61,84 @@ async def main():
     for task_level in ["easy", "medium", "hard"]:
         print(f"[START] task={task_level} env=dataset-audit-env model={MODEL_NAME}")
         
-        try:
-            obs = await env.reset(task_level=task_level)
-        except Exception as e:
-            print(f"Error resetting env: {e}")
-            break
-            
-        done = False
+        success = "false"
         step = 0
         rewards = []
+        score = 0.00
         
-        while not done and step < MAX_STEPS:
-            prompt = build_prompt(obs)
-            error = None
-            action_data = None
+        try:
+            obs = await env.reset(task_level=task_level)
+            done = False
             
-            try:
-                response = await asyncio.to_thread(
-                    client.chat.completions.create,
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": "You are a data auditing agent."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.1
-                )
-                
-                action_str = response.choices[0].message.content.strip()
-                if "```json" in action_str:
-                    action_str = action_str.split("```json")[1].split("```")[0].strip()
-                elif "```" in action_str:
-                    action_str = action_str.split("```")[1].split("```")[0].strip()
-                
-                action_data = json.loads(action_str)
-                action_data["done"] = True # ensuring completion in 1 step for audit
-                action_log_str = json.dumps(action_data)
-            except Exception as e:
-                error = str(e)
+            while not done and step < MAX_STEPS:
+                prompt = build_prompt(obs)
+                error = "null"
+                action_data = None
                 action_log_str = "{}"
-                action_data = {
-                    "missing_values": [],
-                    "type_errors": [],
-                    "duplicates": [],
-                    "fix_suggestions": [],
-                    "done": True
-                }
                 
-            step += 1
-            
-            try:
-                obs, reward_obj = await env.step(action_data)
-            except Exception as e:
-                error = str(e) if not error else error
-                break
+                try:
+                    response = await asyncio.to_thread(
+                        client.chat.completions.create,
+                        model=MODEL_NAME,
+                        messages=[
+                            {"role": "system", "content": "You are a data auditing agent."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.1
+                    )
+                    
+                    action_str = response.choices[0].message.content.strip()
+                    if "```json" in action_str:
+                        action_str = action_str.split("```json")[1].split("```")[0].strip()
+                    elif "```" in action_str:
+                        action_str = action_str.split("```")[1].split("```")[0].strip()
+                    
+                    action_data = json.loads(action_str)
+                    action_data["done"] = True
+                    action_log_str = json.dumps(action_data)
+                except Exception as e:
+                    error = str(e)
+                    action_data = {
+                        "missing_values": [],
+                        "type_errors": [],
+                        "duplicates": [],
+                        "fix_suggestions": [],
+                        "done": True
+                    }
+                    action_log_str = "{}"
+                    
+                step += 1
                 
-            done = reward_obj["done"]
-            curr_reward = reward_obj["reward"]
-            rewards.append(curr_reward)
+                try:
+                    payload = await env.step(action_data)
+                    obs = payload["observation"]
+                    curr_reward = payload["reward"]
+                    done = payload["done"]
+                except Exception as e:
+                    error = str(e) if error == "null" else f"{error} | {e}"
+                    done = True
+                    curr_reward = 0.0
+                    
+                rewards.append(curr_reward)
+                done_str = "true" if done else "false"
+                err_val = f"'{error}'" if error != "null" else "null"
+                print(f"[STEP] step={step} action='{action_log_str}' reward={curr_reward:.2f} done={done_str} error={err_val}")
+                
+            success = "true" if done else "false"
+            score = rewards[-1] if rewards else 0.00
             
-            error_val = f"'{error}'" if error else "None"
-            print(f"[STEP] step={step} action='{action_log_str}' reward={curr_reward:.4f} done={done} error={error_val}")
+        except Exception as e:
+            print(f"Critical error in task {task_level}: {e}")
+        finally:
+            rewards_str = ",".join([f"{r:.2f}" for r in rewards])
+            print(f"[END] success={success} steps={step} score={score:.2f} rewards={rewards_str}")
+            final_scores[task_level] = score
             
-        success = done
-        score = rewards[-1] if rewards else 0.0000
-        final_scores[task_level] = score
-        rewards_str = "[" + ", ".join([f"{r:.4f}" for r in rewards]) + "]"
-        print(f"[END] success={success} steps={step} score={score:.4f} rewards={rewards_str}")
-        
     await env.close()
     
     print("\n[SUMMARY]")
-    for lvl, score in final_scores.items():
-        print(f"Task: {lvl} | Score: {score:.4f}")
+    for lvl, s in final_scores.items():
+        print(f"Task: {lvl} | Score: {s:.4f}")
 
 if __name__ == "__main__":
     asyncio.run(main())

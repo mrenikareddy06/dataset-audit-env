@@ -30,7 +30,9 @@ def step_env(action: Action):
     obs, reward = env.step(action)
     return {
         "observation": obs.model_dump(),
-        "reward": reward.model_dump()
+        "reward": reward.reward,
+        "done": reward.done,
+        "info": reward.info
     }
 
 @app.get("/state", response_model=Observation)

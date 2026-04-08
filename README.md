@@ -92,7 +92,7 @@ The environment seamlessly modulates difficulty criteria to incrementally test a
 
 *   **Easy**: Identify all missing values incrementally. The grader performs precision/recall matches on exactly identified parameters via the `missing_values` declaration array.
 *   **Medium**: Find structural type errors (e.g., character strings infiltrating numeric integer columns) and identify cascading duplicate rows. Grading emphasizes intersecting the `type_errors` and `duplicates` fields.
-*   **Hard**: Full operational audit. Process everything—find the missing values, parse the structural collisions, clear formatting duplicates, and formally render exact remediation resolutions via the `fix_suggestions` schema. Validated via complete strict F1 mapping mathematically bounded between `0.0` - `1.0`.
+*   **Hard**: Full operational audit. Process everything—find the missing values, parse structural collisions (including various date formats and salary outliers), identify subtle duplicates, and provide exact remediation resolutions via the `fix_suggestions` schema. Validated via an average of precision/recall matches across all 4 components (missing, type, dup, fix).
 
 ---
 
@@ -135,6 +135,6 @@ This task calculates deterministic validation scores accurately assessing the ag
 *   **Sequential Task Performance**:
     *   **Easy Task**: `1.0000`
     *   **Medium Task**: `0.6667`
-    *   **Hard Task**: `0.6667`
+    *   **Hard Task**: `0.2500`
 
 ---
